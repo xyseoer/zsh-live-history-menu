@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.1.3
+
+- Support tilde path completion, including hidden files such as `~/.zshrc`.
+- Add Right-arrow acceptance for the highlighted history candidate.
+- Add Esc to hide the visible history candidate list.
+- Add a truncation hint when path completion has more matches than the configured limit.
+- Add configuration switches for normal number and Alt+number selection bindings.
+
 ## 0.1.2
 
 - Cache recent unique history commands to avoid scanning and sorting the full history on every key press.

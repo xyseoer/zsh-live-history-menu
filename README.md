@@ -2,16 +2,21 @@
 
 Realtime history suggestions and current-directory path completion for Zsh.
 
-`zsh-live-history-menu` is a small ZLE-based plugin that shows history candidates while you type, lets you pick candidates quickly, and keeps `Tab` focused on current-directory path completion in command argument position.
+`zsh-live-history-menu` is a small ZLE-based plugin that shows history candidates while you type, lets you pick candidates quickly, and keeps `Tab` focused on current-directory path completion whenever the command line has input.
 
 ## Features
 
 - Realtime list of matching history commands while typing.
 - Ranking tuned for command prefixes and structured input such as `git "` or `git commit -m "`.
 - Up and Down selection for visible history candidates.
+- Right arrow accepts the current highlighted history candidate.
+- Esc hides the history candidate list.
 - Number-based candidate selection.
 - `Alt+number` direct selection from the current visible list.
 - `Tab` completion for current-directory files and folders whenever the command line has input.
+- Tilde path completion such as `~/.zs<Tab>` -> `~/.zshrc`.
+- Hidden file completion when the typed basename starts with `.`.
+- Large path lists are capped and show a "type more characters" hint.
 - Empty command-line `Tab` remains delegated to native Zsh completion.
 - No external runtime dependency.
 - Works as an Oh My Zsh custom plugin and can be sourced by other plugin managers.
@@ -109,11 +114,13 @@ source /path/to/zsh-live-history-menu.plugin.zsh
 | --- | --- |
 | Type text | Show realtime history candidates |
 | Up / Down | Select previous or next visible history candidate |
+| Right | Accept the current highlighted history candidate |
+| Esc | Hide the history candidate list |
 | 1-9 | Pick a visible candidate after selection mode is active |
 | 0 | Pick the 10th visible candidate after selection mode is active |
 | Alt+1 ... Alt+9 | Pick a visible candidate directly |
 | Alt+0 | Pick the 10th visible candidate directly |
-| Tab | Complete files and folders in command argument position |
+| Tab | Complete files and folders when the command line has input |
 
 Number keys still insert normal digits when history selection mode is not active.
 
@@ -121,11 +128,13 @@ Number keys still insert normal digits when history selection mode is not active
 
 - `fr<Tab>` lists current-directory files and folders matching `fr`.
 - `gi<Tab>` lists current-directory files and folders matching `gi`.
+- `cat ~/.zs<Tab>` completes to `cat ~/.zshrc`.
 - `git <Tab>` lists current-directory files and folders.
 - `git src/<Tab>` lists matching entries under `src/`.
 - Empty command-line `Tab` is delegated to native Zsh completion.
 - If exactly one path matches, it is inserted automatically.
 - Directories are displayed with a trailing `/`.
+- If more than `LHM_PATH_MAX_RESULTS` paths match, the list is capped and asks you to type more characters.
 
 ## Configuration
 
@@ -137,6 +146,8 @@ LHM_HISTORY_SCAN_LIMIT=1500
 LHM_FUZZY_MIN_QUERY_LENGTH=4
 LHM_ENABLE_FUZZY=1
 LHM_PATH_MAX_RESULTS=200
+LHM_ENABLE_NUMBER_SELECT=1
+LHM_ENABLE_ALT_NUMBER_SELECT=1
 LHM_SELECTED_MARKER='▸'
 ```
 
@@ -146,6 +157,7 @@ Example:
 LHM_MAX_RESULTS=8
 LHM_HISTORY_SCAN_LIMIT=1500
 LHM_FUZZY_MIN_QUERY_LENGTH=5
+LHM_ENABLE_NUMBER_SELECT=0
 LHM_SELECTED_MARKER='▶'
 plugins=(zsh-live-history-menu zsh-syntax-highlighting)
 ```
@@ -161,6 +173,8 @@ The plugin keeps history matching synchronous so the visible list always matches
 | `LHM_FUZZY_MIN_QUERY_LENGTH` | `4` | Minimum query length before loose fuzzy matching is used |
 | `LHM_ENABLE_FUZZY` | `1` | Set to `0` to disable loose fuzzy matching |
 | `LHM_PATH_MAX_RESULTS` | `200` | Maximum path candidates shown for `Tab` |
+| `LHM_ENABLE_NUMBER_SELECT` | `1` | Set to `0` to keep normal number keys untouched |
+| `LHM_ENABLE_ALT_NUMBER_SELECT` | `1` | Set to `0` to disable Alt+number candidate selection |
 
 For the fastest setup:
 

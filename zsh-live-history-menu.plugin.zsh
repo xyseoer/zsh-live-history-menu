@@ -10,6 +10,8 @@ typeset -gi LHM_HISTORY_SCAN_LIMIT=${LHM_HISTORY_SCAN_LIMIT:-1500}
 typeset -gi LHM_FUZZY_MIN_QUERY_LENGTH=${LHM_FUZZY_MIN_QUERY_LENGTH:-4}
 typeset -gi LHM_ENABLE_FUZZY=${LHM_ENABLE_FUZZY:-1}
 typeset -gi LHM_PATH_MAX_RESULTS=${LHM_PATH_MAX_RESULTS:-200}
+typeset -gi LHM_ENABLE_NUMBER_SELECT=${LHM_ENABLE_NUMBER_SELECT:-1}
+typeset -gi LHM_ENABLE_ALT_NUMBER_SELECT=${LHM_ENABLE_ALT_NUMBER_SELECT:-1}
 typeset -g LHM_SELECTED_MARKER=${LHM_SELECTED_MARKER:-'▸'}
 typeset -ga _lhm_history_matches=()
 typeset -ga _lhm_history_cache=()
@@ -22,6 +24,7 @@ typeset -gi _lhm_history_cache_size=0
 
 typeset -ga _lhm_path_matches=()
 typeset -ga _lhm_path_displays=()
+typeset -gi _lhm_path_truncated=0
 
 _lhm_fuzzy_match() {
   emulate -L zsh
@@ -501,6 +504,34 @@ _lhm_choose_history_match() {
   _lhm_render_history_display
 }
 
+_lhm_accept_history_selection() {
+  emulate -L zsh
+
+  if (( _lhm_selecting )) &&
+     (( _lhm_history_index >= 1 && _lhm_history_index <= $#_lhm_history_matches )); then
+    BUFFER=${_lhm_history_matches[_lhm_history_index]}
+    CURSOR=$#BUFFER
+    _lhm_history_matches=()
+    _lhm_history_query=''
+    _lhm_history_index=0
+    _lhm_selecting=0
+    _lhm_clear_history_display
+    return
+  fi
+
+  zle .forward-char
+}
+
+_lhm_hide_history_list() {
+  emulate -L zsh
+
+  _lhm_history_matches=()
+  _lhm_history_query=''
+  _lhm_history_index=0
+  _lhm_selecting=0
+  _lhm_clear_history_display
+}
+
 _lhm_select_history_number() {
   emulate -L zsh
 
@@ -556,26 +587,60 @@ _lhm_prepare_path_matches() {
 
   local typed_prefix=$1
   local -a local_entries=()
-  local replacement_prefix matched_entry display_entry path_limit
+  local directory_token base_prefix search_directory display_directory
+  local matched_entry display_entry path_limit
 
   _lhm_path_matches=()
   _lhm_path_displays=()
+  _lhm_path_truncated=0
 
-  if [[ -z $typed_prefix ]]; then
-    local_entries=( *(N) )
-  elif [[ $typed_prefix == */* ]]; then
-    replacement_prefix=${typed_prefix:h}
-    [[ $replacement_prefix == $typed_prefix ]] && replacement_prefix='.'
-    local_entries=( "$replacement_prefix"/"${typed_prefix:t}"*(N) )
+  if [[ $typed_prefix == */* ]]; then
+    directory_token=${typed_prefix%/*}
+    base_prefix=${typed_prefix##*/}
+    [[ -z $directory_token && $typed_prefix == /* ]] && directory_token='/'
+    [[ -z $directory_token ]] && directory_token='.'
   else
-    local_entries=( "$typed_prefix"*(N) )
+    directory_token='.'
+    base_prefix=$typed_prefix
+  fi
+
+  case $directory_token in
+    .)
+      search_directory='.'
+      display_directory=''
+      ;;
+    \~)
+      search_directory=$HOME
+      display_directory='~/'
+      ;;
+    \~/*)
+      search_directory="$HOME/${directory_token#\~/}"
+      display_directory="${directory_token%/}/"
+      ;;
+    /)
+      search_directory='/'
+      display_directory='/'
+      ;;
+    *)
+      search_directory=$directory_token
+      display_directory="${directory_token%/}/"
+      ;;
+  esac
+
+  [[ -d $search_directory ]] || return 1
+
+  if [[ -z $base_prefix ]]; then
+    local_entries=( "$search_directory"/*(N) )
+  else
+    local_entries=( "$search_directory"/"$base_prefix"*(N) )
   fi
 
   path_limit=$LHM_PATH_MAX_RESULTS
   (( path_limit <= 0 )) && path_limit=$#local_entries
+  (( $#local_entries > path_limit )) && _lhm_path_truncated=1
 
   for matched_entry in "$local_entries[@]"; do
-    display_entry=$matched_entry
+    display_entry="${display_directory}${matched_entry:t}"
     [[ -d $matched_entry ]] && display_entry=${display_entry%/}/
     _lhm_path_matches+=( "$display_entry" )
     _lhm_path_displays+=( "$display_entry" )
@@ -590,6 +655,26 @@ _lhm_complete_path() {
 
   if (( $#_lhm_path_matches )); then
     compadd -Q -U -V lhm-current-path -d _lhm_path_displays -a _lhm_path_matches
+  fi
+
+  if (( _lhm_path_truncated )); then
+    compadd -x "showing first $LHM_PATH_MAX_RESULTS path matches; type more characters to narrow"
+  fi
+}
+
+_lhm_quote_path_replacement() {
+  emulate -L zsh
+
+  local path=$1
+  local rest
+
+  if [[ $path == \~/* ]]; then
+    rest=${path#\~/}
+    REPLY="~/${(q)rest}"
+  elif [[ $path == '~' ]]; then
+    REPLY='~'
+  else
+    REPLY=${(q)path}
   fi
 }
 
@@ -616,7 +701,8 @@ _lhm_path_tab() {
 
   if (( $#_lhm_path_matches == 1 )); then
     matched_entry=${_lhm_path_matches[1]}
-    replacement=${(q)matched_entry}
+    _lhm_quote_path_replacement "$matched_entry"
+    replacement=$REPLY
     LBUFFER="${LBUFFER[1,$(( ${#LBUFFER} - ${#typed_prefix} ))]}${replacement}"
     return
   fi
@@ -636,6 +722,8 @@ zle -N backward-kill-word _lhm_backward_kill_word
 zle -N kill-word _lhm_kill_word
 zle -N lhm-select-history-previous _lhm_select_history_previous
 zle -N lhm-select-history-next _lhm_select_history_next
+zle -N lhm-accept-history-selection _lhm_accept_history_selection
+zle -N lhm-hide-history-list _lhm_hide_history_list
 zle -N lhm-path-tab _lhm_path_tab
 
 for _lhm_digit in {0..9}; do
@@ -651,11 +739,14 @@ bindkey '^[[A' lhm-select-history-previous
 bindkey '^[[B' lhm-select-history-next
 bindkey '^[OA' lhm-select-history-previous
 bindkey '^[OB' lhm-select-history-next
+bindkey '^[[C' lhm-accept-history-selection
+bindkey '^[OC' lhm-accept-history-selection
+bindkey '^[' lhm-hide-history-list
 bindkey '^I' lhm-path-tab
 
 for _lhm_digit in {0..9}; do
-  bindkey "$_lhm_digit" lhm-select-history-number-$_lhm_digit
-  bindkey "^[$_lhm_digit" lhm-select-history-alt-number-$_lhm_digit
+  (( LHM_ENABLE_NUMBER_SELECT )) && bindkey "$_lhm_digit" lhm-select-history-number-$_lhm_digit
+  (( LHM_ENABLE_ALT_NUMBER_SELECT )) && bindkey "^[$_lhm_digit" lhm-select-history-alt-number-$_lhm_digit
 done
 unset _lhm_digit
 
