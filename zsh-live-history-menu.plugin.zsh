@@ -474,13 +474,11 @@ _lhm_path_tab() {
   emulate -L zsh
   setopt extendedglob nullglob
 
-  local -a words=()
   local typed_prefix matched_entry replacement
 
   _lhm_clear_history_display
 
-  words=( "${(@z)LBUFFER}" )
-  if (( $#words == 0 )) || [[ $LBUFFER != *[[:space:]]* ]]; then
+  if [[ -z ${LBUFFER//[[:space:]]/} ]]; then
     zle .expand-or-complete
     return
   fi

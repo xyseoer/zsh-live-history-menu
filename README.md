@@ -11,8 +11,8 @@ Realtime history suggestions and current-directory path completion for Zsh.
 - Up and Down selection for visible history candidates.
 - Number-based candidate selection.
 - `Alt+number` direct selection from the current visible list.
-- `Tab` completion for files and folders in command argument position.
-- Native command-name completion remains available for the first word.
+- `Tab` completion for current-directory files and folders whenever the command line has input.
+- Empty command-line `Tab` remains delegated to native Zsh completion.
 - No external runtime dependency.
 - Works as an Oh My Zsh custom plugin and can be sourced by other plugin managers.
 
@@ -119,9 +119,11 @@ Number keys still insert normal digits when history selection mode is not active
 
 ## Tab Completion Rules
 
-- `gi<Tab>` is delegated to native command-name completion.
+- `fr<Tab>` lists current-directory files and folders matching `fr`.
+- `gi<Tab>` lists current-directory files and folders matching `gi`.
 - `git <Tab>` lists current-directory files and folders.
 - `git src/<Tab>` lists matching entries under `src/`.
+- Empty command-line `Tab` is delegated to native Zsh completion.
 - If exactly one path matches, it is inserted automatically.
 - Directories are displayed with a trailing `/`.
 
