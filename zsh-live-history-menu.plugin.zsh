@@ -6,12 +6,19 @@ zmodload zsh/complist 2>/dev/null
 autoload -Uz add-zle-hook-widget
 
 typeset -gi LHM_MAX_RESULTS=${LHM_MAX_RESULTS:-12}
+typeset -gi LHM_HISTORY_SCAN_LIMIT=${LHM_HISTORY_SCAN_LIMIT:-1500}
+typeset -gi LHM_FUZZY_MIN_QUERY_LENGTH=${LHM_FUZZY_MIN_QUERY_LENGTH:-4}
+typeset -gi LHM_ENABLE_FUZZY=${LHM_ENABLE_FUZZY:-1}
+typeset -gi LHM_PATH_MAX_RESULTS=${LHM_PATH_MAX_RESULTS:-200}
 typeset -g LHM_SELECTED_MARKER=${LHM_SELECTED_MARKER:-'▸'}
 typeset -ga _lhm_history_matches=()
+typeset -ga _lhm_history_cache=()
 typeset -gi _lhm_history_index=0
 typeset -g _lhm_history_query=''
 typeset -gi _lhm_selecting=0
 typeset -gi _lhm_refreshing=0
+typeset -gi _lhm_history_cache_histcmd=0
+typeset -gi _lhm_history_cache_size=0
 
 typeset -ga _lhm_path_matches=()
 typeset -ga _lhm_path_displays=()
@@ -50,7 +57,7 @@ _lhm_word_prefix_match() {
   words=( "${(@s: :)value}" )
 
   for word in $words; do
-    [[ -n $word && $word == ${query}* ]] && return 0
+    [[ -n $word && $word == "$query"* ]] && return 0
   done
 
   return 1
@@ -101,7 +108,7 @@ _lhm_history_match_bucket() {
   local query_length=${#query}
 
   if _lhm_structured_query "$query"; then
-    if [[ $value == $query ]]; then
+    if [[ $value == "$query" ]]; then
       reply=( 1 )
     elif [[ $value == "${query}"* ]]; then
       reply=( 2 )
@@ -113,19 +120,75 @@ _lhm_history_match_bucket() {
     return 0
   fi
 
-  if [[ $value == $query ]]; then
+  if [[ $value == "$query" ]]; then
     reply=( 1 )
-  elif [[ $value == ${query}* ]]; then
+  elif [[ $value == "$query"* ]]; then
     reply=( 2 )
   elif (( query_length >= 2 )) &&
        _lhm_word_prefix_match "$query" "$value"; then
     reply=( 3 )
-  elif (( query_length >= 3 )) && [[ $value == *${query}* ]]; then
+  elif (( query_length >= 3 )) && [[ $value == *"$query"* ]]; then
     reply=( 4 )
-  elif (( query_length >= 3 )) && _lhm_fuzzy_match "$query" "$value"; then
+  elif (( LHM_ENABLE_FUZZY )) &&
+       (( query_length >= LHM_FUZZY_MIN_QUERY_LENGTH )) &&
+       _lhm_fuzzy_match "$query" "$value"; then
     reply=( 5 )
   else
     return 1
+  fi
+}
+
+_lhm_refresh_history_cache() {
+  emulate -L zsh
+
+  local -A seen_history=()
+  local -a history_numbers=()
+  local history_number command_line scan_count scan_limit current_history_number
+
+  _lhm_history_cache=()
+
+  scan_limit=$LHM_HISTORY_SCAN_LIMIT
+  (( scan_limit <= 0 )) && scan_limit=${#history}
+  current_history_number=${HISTCMD:-0}
+
+  if (( current_history_number > 0 )); then
+    for (( history_number = current_history_number - 1;
+           history_number > 0 && scan_count < scan_limit;
+           history_number-- )); do
+      (( scan_count++ ))
+      command_line=${history[$history_number]}
+      [[ -n $command_line ]] || continue
+      [[ -n ${seen_history[$command_line]-} ]] && continue
+
+      seen_history[$command_line]=1
+      _lhm_history_cache+=( "$command_line" )
+    done
+  else
+    history_numbers=( ${(On)${(k)history}} )
+    for history_number in $history_numbers; do
+      (( scan_count++ ))
+      command_line=${history[$history_number]}
+      [[ -n $command_line ]] || continue
+      [[ -n ${seen_history[$command_line]-} ]] && continue
+
+      seen_history[$command_line]=1
+      _lhm_history_cache+=( "$command_line" )
+
+      (( scan_count >= scan_limit )) && break
+    done
+  fi
+
+  _lhm_history_cache_histcmd=${HISTCMD:-0}
+  _lhm_history_cache_size=${#history}
+}
+
+_lhm_ensure_history_cache() {
+  emulate -L zsh
+
+  if (( $#_lhm_history_cache == 0 )) ||
+     (( _lhm_history_cache_histcmd != ${HISTCMD:-0} )) ||
+     (( _lhm_history_cache_size != ${#history} )); then
+    _lhm_refresh_history_cache
   fi
 }
 
@@ -158,34 +221,91 @@ _lhm_build_history_matches() {
   emulate -L zsh
 
   local query=${1//$'\n'/ }
-  local -A seen_history=()
-  local -a history_numbers=() bucket_1=() bucket_2=() bucket_3=() bucket_4=() bucket_5=()
-  local history_number command_line match_bucket max_results
+  local -A seen_matches=()
+  local -a bucket_1=() bucket_2=() bucket_3=() bucket_4=() bucket_5=()
+  local command_line value max_results query_length
+
+  [[ -n ${query//[[:space:]]/} ]] || return 1
+  if [[ $_lhm_history_query == $query && $#_lhm_history_matches -gt 0 ]] &&
+     (( _lhm_history_cache_histcmd == ${HISTCMD:-0} )) &&
+     (( _lhm_history_cache_size == ${#history} )); then
+    return 0
+  fi
 
   _lhm_history_matches=()
   _lhm_history_query=$query
   _lhm_history_index=0
 
-  [[ -n ${query//[[:space:]]/} ]] || return 1
   query=${(L)query}
+  query_length=${#query}
+  max_results=$LHM_MAX_RESULTS
 
-  history_numbers=( ${(On)${(k)history}} )
-  for history_number in $history_numbers; do
-    command_line=${history[$history_number]}
+  _lhm_ensure_history_cache
+
+  for command_line in "${_lhm_history_cache[@]}"; do
     [[ -n $command_line && $command_line != "$BUFFER" ]] || continue
-    [[ -n ${seen_history[$command_line]-} ]] && continue
-    _lhm_history_match_bucket "$query" "$command_line" || continue
-    match_bucket=$reply[1]
+    value=${(L)command_line}
 
-    seen_history[$command_line]=1
-    case $match_bucket in
-      1) bucket_1+=( "$command_line" ) ;;
-      2) bucket_2+=( "$command_line" ) ;;
-      3) bucket_3+=( "$command_line" ) ;;
-      4) bucket_4+=( "$command_line" ) ;;
-      5) bucket_5+=( "$command_line" ) ;;
-    esac
+    if [[ $value == "$query" ]]; then
+      bucket_1+=( "$command_line" )
+      seen_matches[$command_line]=1
+    elif [[ $value == "$query"* ]]; then
+      bucket_2+=( "$command_line" )
+      seen_matches[$command_line]=1
+    fi
+
+    (( ${#bucket_1} + ${#bucket_2} >= max_results )) && break
   done
+
+  if (( ${#bucket_1} + ${#bucket_2} < max_results )); then
+    for command_line in "${_lhm_history_cache[@]}"; do
+      [[ -n $command_line && $command_line != "$BUFFER" ]] || continue
+      [[ -n ${seen_matches[$command_line]-} ]] && continue
+      value=${(L)command_line}
+
+      if _lhm_structured_query "$query"; then
+        _lhm_structured_match "$query" "$value" || continue
+      else
+        (( query_length >= 2 )) || continue
+        _lhm_word_prefix_match "$query" "$value" || continue
+      fi
+
+      bucket_3+=( "$command_line" )
+      seen_matches[$command_line]=1
+      (( ${#bucket_1} + ${#bucket_2} + ${#bucket_3} >= max_results )) && break
+    done
+  fi
+
+  if ! _lhm_structured_query "$query" &&
+     (( query_length >= 3 )) &&
+     (( ${#bucket_1} + ${#bucket_2} + ${#bucket_3} < max_results )); then
+    for command_line in "${_lhm_history_cache[@]}"; do
+      [[ -n $command_line && $command_line != "$BUFFER" ]] || continue
+      [[ -n ${seen_matches[$command_line]-} ]] && continue
+      value=${(L)command_line}
+      [[ $value == *"$query"* ]] || continue
+
+      bucket_4+=( "$command_line" )
+      seen_matches[$command_line]=1
+      (( ${#bucket_1} + ${#bucket_2} + ${#bucket_3} + ${#bucket_4} >= max_results )) && break
+    done
+  fi
+
+  if (( LHM_ENABLE_FUZZY )) &&
+     ! _lhm_structured_query "$query" &&
+     (( query_length >= LHM_FUZZY_MIN_QUERY_LENGTH )) &&
+     (( ${#bucket_1} + ${#bucket_2} + ${#bucket_3} + ${#bucket_4} < max_results )); then
+    for command_line in "${_lhm_history_cache[@]}"; do
+      [[ -n $command_line && $command_line != "$BUFFER" ]] || continue
+      [[ -n ${seen_matches[$command_line]-} ]] && continue
+      value=${(L)command_line}
+      _lhm_fuzzy_match "$query" "$value" || continue
+
+      bucket_5+=( "$command_line" )
+      seen_matches[$command_line]=1
+      (( ${#bucket_1} + ${#bucket_2} + ${#bucket_3} + ${#bucket_4} + ${#bucket_5} >= max_results )) && break
+    done
+  fi
 
   _lhm_history_matches=(
     "$bucket_1[@]"
@@ -194,7 +314,6 @@ _lhm_build_history_matches() {
     "$bucket_4[@]"
     "$bucket_5[@]"
   )
-  max_results=$LHM_MAX_RESULTS
   _lhm_history_matches=( "${_lhm_history_matches[@]:0:$max_results}" )
 
   (( $#_lhm_history_matches ))
@@ -437,7 +556,7 @@ _lhm_prepare_path_matches() {
 
   local typed_prefix=$1
   local -a local_entries=()
-  local replacement_prefix matched_entry display_entry
+  local replacement_prefix matched_entry display_entry path_limit
 
   _lhm_path_matches=()
   _lhm_path_displays=()
@@ -452,11 +571,15 @@ _lhm_prepare_path_matches() {
     local_entries=( "$typed_prefix"*(N) )
   fi
 
+  path_limit=$LHM_PATH_MAX_RESULTS
+  (( path_limit <= 0 )) && path_limit=$#local_entries
+
   for matched_entry in "$local_entries[@]"; do
     display_entry=$matched_entry
     [[ -d $matched_entry ]] && display_entry=${display_entry%/}/
     _lhm_path_matches+=( "$display_entry" )
     _lhm_path_displays+=( "$display_entry" )
+    (( $#_lhm_path_matches >= path_limit )) && break
   done
 
   (( $#_lhm_path_matches ))
