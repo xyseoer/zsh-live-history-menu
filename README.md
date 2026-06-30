@@ -18,6 +18,7 @@ Realtime history suggestions and current-directory path completion for Zsh.
 - Tilde path completion such as `~/.zs<Tab>` -> `~/.zshrc`.
 - Hidden file completion when the typed basename starts with `.`.
 - Large path lists are capped and show a "type more characters" hint.
+- Narrow terminal windows get extra spacing before the live history list.
 - Empty command-line `Tab` remains delegated to native Zsh completion.
 - No external runtime dependency.
 - Works as an Oh My Zsh custom plugin and can be sourced by other plugin managers.
@@ -150,6 +151,8 @@ LHM_ENABLE_FUZZY=1
 LHM_PATH_MAX_RESULTS=200
 LHM_ENABLE_NUMBER_SELECT=1
 LHM_ENABLE_ALT_NUMBER_SELECT=1
+LHM_NARROW_COLUMNS=100
+LHM_NARROW_HISTORY_GAP=1
 LHM_SELECTED_MARKER='▸'
 ```
 
@@ -160,6 +163,7 @@ LHM_MAX_RESULTS=8
 LHM_HISTORY_SCAN_LIMIT=1500
 LHM_FUZZY_MIN_QUERY_LENGTH=5
 LHM_ENABLE_NUMBER_SELECT=0
+LHM_NARROW_COLUMNS=100
 LHM_SELECTED_MARKER='▶'
 plugins=(zsh-live-history-menu zsh-syntax-highlighting)
 ```
@@ -177,6 +181,8 @@ The plugin keeps history matching synchronous so the visible list always matches
 | `LHM_PATH_MAX_RESULTS` | `200` | Maximum path candidates shown for `Tab` |
 | `LHM_ENABLE_NUMBER_SELECT` | `1` | Set to `0` to keep normal number keys untouched |
 | `LHM_ENABLE_ALT_NUMBER_SELECT` | `1` | Set to `0` to disable Alt+number candidate selection |
+| `LHM_NARROW_COLUMNS` | `100` | Terminal width below which the history list gets extra spacing |
+| `LHM_NARROW_HISTORY_GAP` | `1` | Extra blank lines before the history list in narrow or wrapped displays |
 
 For the fastest setup:
 

@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.5
+
+- Add extra spacing before the live history list in narrow or wrapped terminal displays.
+
 ## 0.1.4
 
 - Make path completion case-insensitive while preserving the real on-disk path casing.

@@ -12,6 +12,8 @@ typeset -gi LHM_ENABLE_FUZZY=${LHM_ENABLE_FUZZY:-1}
 typeset -gi LHM_PATH_MAX_RESULTS=${LHM_PATH_MAX_RESULTS:-200}
 typeset -gi LHM_ENABLE_NUMBER_SELECT=${LHM_ENABLE_NUMBER_SELECT:-1}
 typeset -gi LHM_ENABLE_ALT_NUMBER_SELECT=${LHM_ENABLE_ALT_NUMBER_SELECT:-1}
+typeset -gi LHM_NARROW_COLUMNS=${LHM_NARROW_COLUMNS:-100}
+typeset -gi LHM_NARROW_HISTORY_GAP=${LHM_NARROW_HISTORY_GAP:-1}
 typeset -g LHM_SELECTED_MARKER=${LHM_SELECTED_MARKER:-'▸'}
 typeset -ga _lhm_history_matches=()
 typeset -ga _lhm_history_cache=()
@@ -350,6 +352,24 @@ _lhm_clear_history_display() {
   zle -R -c
 }
 
+_lhm_history_display_prefix() {
+  emulate -L zsh
+
+  local columns=${COLUMNS:-80}
+  local gap_lines=1
+
+  if (( columns < LHM_NARROW_COLUMNS )) ||
+     (( ${+BUFFERLINES} && BUFFERLINES > 1 )); then
+    (( gap_lines += LHM_NARROW_HISTORY_GAP ))
+  fi
+
+  REPLY=''
+  while (( gap_lines > 0 )); do
+    REPLY+=$'\n'
+    (( gap_lines-- ))
+  done
+}
+
 _lhm_render_history_display() {
   emulate -L zsh
 
@@ -369,7 +389,8 @@ _lhm_render_history_display() {
     lines+=( "$REPLY" )
   done
 
-  POSTDISPLAY=$'\n'"${(F)lines}"
+  _lhm_history_display_prefix
+  POSTDISPLAY="${REPLY}${(F)lines}"
   zle -R -c
 }
 
