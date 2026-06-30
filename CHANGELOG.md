@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.6
+
+- Limit visible history candidates in narrow or wrapped displays to avoid stale list lines after terminal scrolling.
+
 ## 0.1.5
 
 - Add extra spacing before the live history list in narrow or wrapped terminal displays.

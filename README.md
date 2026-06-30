@@ -153,6 +153,7 @@ LHM_ENABLE_NUMBER_SELECT=1
 LHM_ENABLE_ALT_NUMBER_SELECT=1
 LHM_NARROW_COLUMNS=100
 LHM_NARROW_HISTORY_GAP=1
+LHM_NARROW_MAX_RESULTS=6
 LHM_SELECTED_MARKER='▸'
 ```
 
@@ -164,6 +165,7 @@ LHM_HISTORY_SCAN_LIMIT=1500
 LHM_FUZZY_MIN_QUERY_LENGTH=5
 LHM_ENABLE_NUMBER_SELECT=0
 LHM_NARROW_COLUMNS=100
+LHM_NARROW_MAX_RESULTS=6
 LHM_SELECTED_MARKER='▶'
 plugins=(zsh-live-history-menu zsh-syntax-highlighting)
 ```
@@ -183,6 +185,7 @@ The plugin keeps history matching synchronous so the visible list always matches
 | `LHM_ENABLE_ALT_NUMBER_SELECT` | `1` | Set to `0` to disable Alt+number candidate selection |
 | `LHM_NARROW_COLUMNS` | `100` | Terminal width below which the history list gets extra spacing |
 | `LHM_NARROW_HISTORY_GAP` | `1` | Extra blank lines before the history list in narrow or wrapped displays |
+| `LHM_NARROW_MAX_RESULTS` | `6` | Maximum visible history candidates in narrow or wrapped displays |
 
 For the fastest setup:
 

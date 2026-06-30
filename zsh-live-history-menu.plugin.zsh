@@ -14,6 +14,7 @@ typeset -gi LHM_ENABLE_NUMBER_SELECT=${LHM_ENABLE_NUMBER_SELECT:-1}
 typeset -gi LHM_ENABLE_ALT_NUMBER_SELECT=${LHM_ENABLE_ALT_NUMBER_SELECT:-1}
 typeset -gi LHM_NARROW_COLUMNS=${LHM_NARROW_COLUMNS:-100}
 typeset -gi LHM_NARROW_HISTORY_GAP=${LHM_NARROW_HISTORY_GAP:-1}
+typeset -gi LHM_NARROW_MAX_RESULTS=${LHM_NARROW_MAX_RESULTS:-6}
 typeset -g LHM_SELECTED_MARKER=${LHM_SELECTED_MARKER:-'▸'}
 typeset -ga _lhm_history_matches=()
 typeset -ga _lhm_history_cache=()
@@ -23,6 +24,7 @@ typeset -gi _lhm_selecting=0
 typeset -gi _lhm_refreshing=0
 typeset -gi _lhm_history_cache_histcmd=0
 typeset -gi _lhm_history_cache_size=0
+typeset -gi _lhm_history_result_limit=0
 
 typeset -ga _lhm_path_matches=()
 typeset -ga _lhm_path_displays=()
@@ -222,6 +224,59 @@ _lhm_format_history_display_line() {
   REPLY="${prefix}${command_line}"
 }
 
+_lhm_history_display_gap_count() {
+  emulate -L zsh
+
+  local columns=${COLUMNS:-80}
+  local gap_lines=1
+
+  if (( columns < LHM_NARROW_COLUMNS )) ||
+     (( ${+BUFFERLINES} && BUFFERLINES > 1 )); then
+    (( gap_lines += LHM_NARROW_HISTORY_GAP ))
+  fi
+
+  (( gap_lines < 1 )) && gap_lines=1
+  REPLY=$gap_lines
+}
+
+_lhm_effective_history_limit() {
+  emulate -L zsh
+
+  local max_results=$LHM_MAX_RESULTS
+  local columns=${COLUMNS:-80}
+  local terminal_lines=${LINES:-24}
+  local buffer_lines=1
+  local gap_lines available_lines
+
+  (( max_results <= 0 )) && max_results=12
+
+  if (( columns < LHM_NARROW_COLUMNS )) ||
+     (( ${+BUFFERLINES} && BUFFERLINES > 1 )); then
+    if (( LHM_NARROW_MAX_RESULTS > 0 && max_results > LHM_NARROW_MAX_RESULTS )); then
+      max_results=$LHM_NARROW_MAX_RESULTS
+    fi
+  fi
+
+  if (( ${+BUFFERLINES} && BUFFERLINES > 1 )); then
+    buffer_lines=$BUFFERLINES
+  fi
+
+  _lhm_history_display_gap_count
+  gap_lines=$REPLY
+
+  if (( terminal_lines > 0 )); then
+    available_lines=$(( terminal_lines - buffer_lines - gap_lines - 4 ))
+    if (( available_lines < 1 )); then
+      max_results=1
+    elif (( available_lines < max_results )); then
+      max_results=$available_lines
+    fi
+  fi
+
+  (( max_results < 1 )) && max_results=1
+  REPLY=$max_results
+}
+
 _lhm_build_history_matches() {
   emulate -L zsh
 
@@ -231,19 +286,23 @@ _lhm_build_history_matches() {
   local command_line value max_results query_length
 
   [[ -n ${query//[[:space:]]/} ]] || return 1
+  _lhm_effective_history_limit
+  max_results=$REPLY
+
   if [[ $_lhm_history_query == $query && $#_lhm_history_matches -gt 0 ]] &&
      (( _lhm_history_cache_histcmd == ${HISTCMD:-0} )) &&
-     (( _lhm_history_cache_size == ${#history} )); then
+     (( _lhm_history_cache_size == ${#history} )) &&
+     (( _lhm_history_result_limit == max_results )); then
     return 0
   fi
 
   _lhm_history_matches=()
   _lhm_history_query=$query
   _lhm_history_index=0
+  _lhm_history_result_limit=$max_results
 
   query=${(L)query}
   query_length=${#query}
-  max_results=$LHM_MAX_RESULTS
 
   _lhm_ensure_history_cache
 
@@ -355,13 +414,9 @@ _lhm_clear_history_display() {
 _lhm_history_display_prefix() {
   emulate -L zsh
 
-  local columns=${COLUMNS:-80}
-  local gap_lines=1
-
-  if (( columns < LHM_NARROW_COLUMNS )) ||
-     (( ${+BUFFERLINES} && BUFFERLINES > 1 )); then
-    (( gap_lines += LHM_NARROW_HISTORY_GAP ))
-  fi
+  local gap_lines
+  _lhm_history_display_gap_count
+  gap_lines=$REPLY
 
   REPLY=''
   while (( gap_lines > 0 )); do
