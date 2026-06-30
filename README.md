@@ -14,6 +14,7 @@ Realtime history suggestions and current-directory path completion for Zsh.
 - Number-based candidate selection.
 - `Alt+number` direct selection from the current visible list.
 - `Tab` completion for current-directory files and folders whenever the command line has input.
+- Case-insensitive path matching that inserts the real on-disk path casing.
 - Tilde path completion such as `~/.zs<Tab>` -> `~/.zshrc`.
 - Hidden file completion when the typed basename starts with `.`.
 - Large path lists are capped and show a "type more characters" hint.
@@ -128,6 +129,7 @@ Number keys still insert normal digits when history selection mode is not active
 
 - `fr<Tab>` lists current-directory files and folders matching `fr`.
 - `gi<Tab>` lists current-directory files and folders matching `gi`.
+- `Documents/git<Tab>` can match `Documents/GitHub/`.
 - `cat ~/.zs<Tab>` completes to `cat ~/.zshrc`.
 - `git <Tab>` lists current-directory files and folders.
 - `git src/<Tab>` lists matching entries under `src/`.

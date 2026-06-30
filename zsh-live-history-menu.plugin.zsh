@@ -581,9 +581,72 @@ _lhm_clear_empty_buffer_list() {
   _lhm_clear_history_display
 }
 
-_lhm_prepare_path_matches() {
+_lhm_resolve_path_directory() {
   emulate -L zsh
   setopt extendedglob nullglob
+
+  local root_directory=$1
+  local display_prefix=$2
+  local relative_directory=$3
+  local current_directory=$root_directory
+  local display_directory=$display_prefix
+  local component child_path child_name matched_name
+  local -a components child_names
+
+  reply=()
+
+  if [[ -z $relative_directory ]]; then
+    reply=( "$current_directory" "$display_directory" )
+    return 0
+  fi
+
+  components=( "${(@s:/:)relative_directory}" )
+
+  for component in "$components[@]"; do
+    [[ -z $component || $component == '.' ]] && continue
+
+    if [[ $component == '..' ]]; then
+      current_directory="${current_directory%/}/.."
+      display_directory="${display_directory}../"
+      continue
+    fi
+
+    [[ -d $current_directory ]] || return 1
+
+    matched_name=''
+    child_names=( "$current_directory"/*(ND:t) )
+
+    for child_name in "$child_names[@]"; do
+      [[ ${child_name:l} == ${component:l} ]] || continue
+
+      if [[ $current_directory == / ]]; then
+        child_path="/$child_name"
+      else
+        child_path="${current_directory%/}/$child_name"
+      fi
+
+      [[ -d $child_path ]] || continue
+      matched_name=$child_name
+      break
+    done
+
+    [[ -n $matched_name ]] || return 1
+
+    if [[ $current_directory == / ]]; then
+      current_directory="/$matched_name"
+    else
+      current_directory="${current_directory%/}/$matched_name"
+    fi
+
+    display_directory="${display_directory}${matched_name}/"
+  done
+
+  reply=( "$current_directory" "$display_directory" )
+}
+
+_lhm_prepare_path_matches() {
+  emulate -L zsh
+  setopt extendedglob nullglob no_case_glob
 
   local typed_prefix=$1
   local -a local_entries=()
@@ -614,16 +677,28 @@ _lhm_prepare_path_matches() {
       display_directory='~/'
       ;;
     \~/*)
-      search_directory="$HOME/${directory_token#\~/}"
-      display_directory="${directory_token%/}/"
+      _lhm_resolve_path_directory "$HOME" "~/" "${directory_token#\~/}" || return 1
+      search_directory=${reply[1]}
+      display_directory=${reply[2]}
       ;;
     /)
       search_directory='/'
       display_directory='/'
       ;;
+    /*)
+      _lhm_resolve_path_directory "/" "/" "${directory_token#/}" || return 1
+      search_directory=${reply[1]}
+      display_directory=${reply[2]}
+      ;;
+    ./*)
+      _lhm_resolve_path_directory "." "./" "${directory_token#./}" || return 1
+      search_directory=${reply[1]}
+      display_directory=${reply[2]}
+      ;;
     *)
-      search_directory=$directory_token
-      display_directory="${directory_token%/}/"
+      _lhm_resolve_path_directory "." "" "$directory_token" || return 1
+      search_directory=${reply[1]}
+      display_directory=${reply[2]}
       ;;
   esac
 

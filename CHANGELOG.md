@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.4
+
+- Make path completion case-insensitive while preserving the real on-disk path casing.
+
 ## 0.1.3
 
 - Support tilde path completion, including hidden files such as `~/.zshrc`.
